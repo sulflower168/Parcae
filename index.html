@@ -3,17 +3,327 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parcae</title>
+    <title>商品管理＆チャットアプリ</title>
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        #product-list {
+            margin-top: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .flex-row {
+            display: flex;
+            gap: 10px;
+        }
+        .flex-row .flex-item {
+            flex: 1;
+        }
+        #chat-messages {
+            border: 1px solid #ccc;
+            height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .message .username {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .message .text {
+            display: block;
+            margin-top: 5px;
+        }
+        .message .timestamp {
+            font-size: 0.8em;
+            color: #777;
+        }
+        .message.mine {
+            background-color: #dcf8c6;
+            margin-left: auto;
+            text-align: left;
+        }
+        .message.their {
+            background-color: #fff;
+            text-align: left;
+        }
+        .edit-btn {
+            background-color: #007bff;
+            color: #fff;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .edit-btn:hover {
+            background-color: #0056b3;
+        }
+        /* モーダルのスタイリング */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            width: 300px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+            padding: 20px;
+        }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+        .modal input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .modal button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        .save-btn {
+            background-color: #28a745;
+            color: #fff;
+        }
+        .delete-btn {
+            background-color: #dc3545;
+            color: #fff;
+        }
+    </style>
 </head>
 <body>
-    <header>
-        <div>ホーム</div>
-    </header>
-    <main>
-        <div>メインコンテンツ</div>
-    </main>
-    <footer>
-        <div>フッター</div>
-    </footer>
+    <div class="container">
+        <h1>Parcae</h1>
+
+        <!-- 商品登録フォーム -->
+        <section>
+            <h3>商品登録</h3>
+            <div class="form-group">
+                <input type="text" id="product-name" placeholder="商品名">
+            </div>
+            <div class="form-group flex-row">
+                <div class="flex-item">
+                <input type="number" id="product-price" name="product-price" placeholder="価格 (円)" required>
+                </div>
+                <div class="flex-item">
+                <input type="number" id="product-quantity" name="product-quantity" placeholder="個数" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <select id="product-category">
+                    <option value="食材">食材</option>
+                    <option value="機材">機材</option>
+                    <option value="ドリンク">ドリンク</option>
+                    <option value="その他">その他</option>
+                </select>
+            </div>
+            <button id="product-add">商品を登録</button>
+            <h3>登録済み商品</h3>
+            <div id="product-list"></div>
+        </section>
+
+        <!-- モーダル -->
+        <div class="modal-overlay"></div>
+        <div class="modal" id="edit-modal">
+            <h2>商品を編集</h2>
+            <input type="text" id="edit-name" placeholder="商品名">
+            <input type="number" id="edit-price" placeholder="価格">
+            <input type="number" id="edit-quantity" placeholder="個数">
+            <button class="save-btn">保存</button>
+            <button class="delete-btn">削除</button>
+        </div>
+
+        <!-- チャットセクション -->
+        <div id="chat-container">
+            <h2>チャット</h2>
+            <div id="chat-messages"></div>
+            <input type="text" id="username" placeholder="ユーザー名を入力..." style="width: 30%; margin-right: 5px;">
+            <input type="text" id="chat-input" placeholder="メッセージを入力..." style="width: 50%; margin-right: 5px;">
+            <button id="chat-send">送信</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue, update, remove } from "https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js";
+
+        // Firebase設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyDgd4cfkzkdz_TinFaGVP5-Uv7FunBSke0",
+            authDomain: "parcae-bc829.firebaseapp.com",
+            databaseURL: "https://parcae-bc829-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "parcae-bc829",
+            storageBucket: "parcae-bc829.firebasestorage.app",
+            messagingSenderId: "304548636764",
+            appId: "1:304548636764:web:8cdd55eedaaf7e9d235e99",
+            measurementId: "G-3XW6JYD1HK"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const productRef = ref(db, 'products');
+
+        // 商品登録
+        document.getElementById('product-add').addEventListener('click', () => {
+        const name = document.getElementById('product-name').value;
+        const price = document.getElementById('product-price').value;
+        const quantity = document.getElementById('product-quantity').value;
+        const category = document.getElementById('product-category').value;
+
+        if (name && price && quantity && category) {
+            const newProductRef = push(productRef);
+            set(newProductRef, { name, price, quantity, category });
+            document.getElementById('product-name').value = '';
+            document.getElementById('product-price').value = '';
+            document.getElementById('product-quantity').value = '';
+            document.getElementById('product-category').value = '食材';
+        }
+        });
+
+        // 商品一覧表示
+        onValue(productRef, (snapshot) => {
+        const productList = document.getElementById('product-list');
+        productList.innerHTML = '';
+        const products = snapshot.val();
+        if (products) {
+            Object.entries(products).forEach(([id, product]) => {
+            const productDiv = document.createElement('div');
+            productDiv.innerHTML = `
+                ${product.name} - ${product.price}円 - ${product.quantity}個 - ${product.category}
+                <button class="edit-btn" data-id="${id}">編集</button>
+            `;
+            productList.appendChild(productDiv);
+            });
+
+            // 編集ボタンにイベントリスナーを追加
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.target.getAttribute('data-id');
+                const product = products[id];
+
+                // モーダルにデータをセット
+                document.getElementById('edit-name').value = product.name;
+                document.getElementById('edit-price').value = product.price;
+                document.getElementById('edit-quantity').value = product.quantity;
+
+                // モーダルを表示
+                document.querySelector('.modal-overlay').style.display = 'block';
+                document.getElementById('edit-modal').style.display = 'block';
+
+                // 保存ボタン
+                document.querySelector('.save-btn').onclick = () => {
+                const newName = document.getElementById('edit-name').value;
+                const newPrice = document.getElementById('edit-price').value;
+                const newQuantity = document.getElementById('edit-quantity').value;
+
+                update(ref(db, `products/${id}`), { name: newName, price: newPrice, quantity: newQuantity });
+
+                closeModal();
+                };
+
+                // 削除ボタン
+                document.querySelector('.delete-btn').onclick = () => {
+                remove(ref(db, `products/${id}`));
+                closeModal();
+                };
+            });
+            });
+        }
+        });
+
+        // モーダルを閉じる
+        const closeModal = () => {
+        document.querySelector('.modal-overlay').style.display = 'none';
+        document.getElementById('edit-modal').style.display = 'none';
+        };
+
+        document.querySelector('.modal-overlay').addEventListener('click', closeModal);
+
+        // チャット機能
+        const chatRef = ref(db, 'chat');
+        document.getElementById('chat-send').addEventListener('click', async () => {
+        const username = document.getElementById('username').value.trim();
+        const message = document.getElementById('chat-input').value.trim();
+
+        if (username && message) {
+            await push(chatRef, { username, text: message, timestamp: Date.now() });
+            document.getElementById('chat-input').value = '';
+        } else {
+            alert('ユーザー名とメッセージを入力してください。');
+        }
+        });
+
+        onValue(chatRef, (snapshot) => {
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.innerHTML = '';
+        const messages = snapshot.val();
+        if (messages) {
+            Object.values(messages)
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .forEach((msg) => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.innerHTML = `
+                <span class="username">${msg.username}</span>: 
+                <span class="text">${msg.text}</span>
+                <span class="timestamp"> (${new Date(msg.timestamp).toLocaleTimeString()})</span>
+                `;
+                chatMessages.appendChild(messageDiv);
+            });
+        }
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+    </script>
 </body>
 </html>
