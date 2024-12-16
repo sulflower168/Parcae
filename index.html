@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
     <title>商品管理＆チャットアプリ</title>
     <script type="module" src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app.js"></script>
     <script type="module" src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database.js"></script>
@@ -16,14 +16,25 @@
             max-width: 800px;
             margin: 0 auto;
         }
-        h1, h2 {
+        h1 {
+            margin: 8px 0;
+        }
+        h1, h2, h3 {
             color: #333;
+        }
+        h4 {
+            color: #007bff;
+            margin: 4px 0 0 0;
+        }
+        h5 {
+            color: #777;
+            margin: 0;
         }
         #product-list {
             margin-top: 20px;
         }
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 0;
         }
         input, select, textarea {
             width: 100%;
@@ -54,7 +65,6 @@
             background-color: #f9f9f9;
         }
         .message {
-            margin-bottom: 10px;
             padding: 10px;
             border-radius: 10px;
             max-width: 70%;
@@ -144,6 +154,7 @@
 <body>
     <div class="container">
         <h1>Parcae</h1>
+        <hr>
 
         <!-- 商品登録フォーム -->
         <section>
@@ -168,7 +179,6 @@
                 </select>
             </div>
             <button id="product-add">商品を登録</button>
-            <h3>登録済み商品</h3>
             <div id="product-list"></div>
         </section>
 
@@ -185,7 +195,7 @@
 
         <!-- チャットセクション -->
         <div id="chat-container">
-            <h2>チャット</h2>
+            <h3>チャット</h3>
             <div id="chat-messages"></div>
             <input type="text" id="username" placeholder="ユーザー名を入力..." style="width: 30%; margin-right: 5px;">
             <input type="text" id="chat-input" placeholder="メッセージを入力..." style="width: 50%; margin-right: 5px;">
@@ -233,53 +243,170 @@
 
         // 商品一覧表示
         onValue(productRef, (snapshot) => {
-        const productList = document.getElementById('product-list');
-        productList.innerHTML = '';
-        const products = snapshot.val();
-        if (products) {
-            Object.entries(products).forEach(([id, product]) => {
-            const productDiv = document.createElement('div');
-            productDiv.innerHTML = `
-                ${product.name} - ${product.price}円 - ${product.quantity}個 - ${product.category}
-                <button class="edit-btn" data-id="${id}">編集</button>
-            `;
-            productList.appendChild(productDiv);
-            });
+            const productList = document.getElementById('product-list');
+            productList.innerHTML = '';
 
-            // 編集ボタンにイベントリスナーを追加
-            document.querySelectorAll('.edit-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.target.getAttribute('data-id');
-                const product = products[id];
-
-                // モーダルにデータをセット
-                document.getElementById('edit-name').value = product.name;
-                document.getElementById('edit-price').value = product.price;
-                document.getElementById('edit-quantity').value = product.quantity;
-
-                // モーダルを表示
-                document.querySelector('.modal-overlay').style.display = 'block';
-                document.getElementById('edit-modal').style.display = 'block';
-
-                // 保存ボタン
-                document.querySelector('.save-btn').onclick = () => {
-                const newName = document.getElementById('edit-name').value;
-                const newPrice = document.getElementById('edit-price').value;
-                const newQuantity = document.getElementById('edit-quantity').value;
-
-                update(ref(db, `products/${id}`), { name: newName, price: newPrice, quantity: newQuantity });
-
-                closeModal();
+            const products = snapshot.val();
+            if (products) {
+                // カテゴリごとにデータを分類
+                const categories = {
+                    '食材': [],
+                    '機材': [],
+                    'ドリンク': [],
+                    'その他': []
                 };
 
-                // 削除ボタン
-                document.querySelector('.delete-btn').onclick = () => {
-                remove(ref(db, `products/${id}`));
-                closeModal();
+                Object.entries(products).forEach(([id, product]) => {
+                    if (categories[product.category]) {
+                        categories[product.category].push({ id, ...product });
+                    }
+                });
+
+                // 各カテゴリの予算を設定 (例: 食材に5000円、機材に3000円)
+                const categoryBudgets = {
+                    '食材': 13000,
+                    '機材': 1500,
+                    'ドリンク': 1000,
+                    'その他': 1000,
+                    // 他のカテゴリの予算も追加可能
                 };
-            });
-            });
-        }
+
+                // プログレスバーの要素を作成
+                const progressContainer = document.createElement('div');
+                progressContainer.style.width = '100%';
+                progressContainer.style.height = '30px';
+                progressContainer.style.backgroundColor = '#e0e0e0'; // 背景色
+
+                // 各カテゴリごとにプログレスバーを描画
+                Object.keys(categories).forEach(category => {
+                    if (categories[category].length > 0) {
+                        // カテゴリ見出し
+                        const categoryHeading = document.createElement('h4');
+                        categoryHeading.textContent = category;
+                        productList.appendChild(categoryHeading);
+
+                        // カテゴリごとの合計金額を計算
+                        let categoryTotalAmount = 0;
+                        categories[category].forEach(product => {
+                            const productTotal = product.quantity * product.price;
+                            categoryTotalAmount += productTotal;
+                        });
+
+                        // カテゴリごとの予算を取得
+                        const categoryBudget = categoryBudgets[category] || 0;
+
+                        // 残りの予算額を計算
+                        const remainingBudget = categoryBudget - categoryTotalAmount;
+
+                        // カテゴリごとのプログレスバーを作成
+                        const categoryProgressContainer = document.createElement('div');
+                        categoryProgressContainer.style.width = '100%';
+                        categoryProgressContainer.style.height = '20px';
+                        categoryProgressContainer.style.backgroundColor = '#e0e0e0';
+
+                        const categoryProgressBar = document.createElement('div');
+                        categoryProgressBar.style.height = '100%';
+
+                        // 進捗計算
+                        const categoryProgressPercentage = categoryBudget > 0 ? (categoryTotalAmount / categoryBudget) * 100 : 0;
+
+                        // カテゴリごとに異なる色を設定
+                        if (category === '食材') {
+                            categoryProgressBar.style.backgroundColor = '#76c7c0'; // 食材は緑系
+                        } else if (category === '機材') {
+                            categoryProgressBar.style.backgroundColor = '#f39c12'; // 機材はオレンジ系
+                        } else {
+                            categoryProgressBar.style.backgroundColor = '#3498db'; // その他のカテゴリは青系
+                        }
+
+                        categoryProgressBar.style.width = `${Math.min(categoryProgressPercentage, 100)}%`; // 100%を超えないように調整
+                        categoryProgressContainer.appendChild(categoryProgressBar);
+                        productList.appendChild(categoryProgressContainer);
+
+                        // 各商品の表示
+                        categories[category].forEach(product => {
+                            const productDiv = document.createElement('div');
+                            const productTotal = product.quantity * product.price;
+                            productDiv.innerHTML = `
+                                ${product.name}, ${product.quantity}個, 計: ${productTotal}円
+                                <button class="edit-btn" data-id="${product.id}">編集</button>
+                            `;
+                            productList.appendChild(productDiv);
+                        });
+
+                        // カテゴリごとの残りの予算額と進捗を表示
+                        const categoryRemainingBudgetDiv = document.createElement('div');
+                        categoryRemainingBudgetDiv.innerHTML = `
+                            <h5>${category}の残りの予算額: ${remainingBudget}円</h5>
+                            <h5>進捗: ${Math.min(categoryProgressPercentage, 100).toFixed(2)}%</h5>
+                        `;
+                        productList.appendChild(categoryRemainingBudgetDiv);
+                    }
+                });
+
+                // 全体の合計金額とプログレスバーも表示
+                let totalAmount = 0;
+                Object.keys(categories).forEach(category => {
+                    categories[category].forEach(product => {
+                        totalAmount += product.quantity * product.price;
+                    });
+                });
+
+                const totalProgressContainer = document.createElement('div');
+                totalProgressContainer.style.width = '100%';
+                totalProgressContainer.style.height = '30px';
+                totalProgressContainer.style.backgroundColor = '#e0e0e0';
+
+                const totalProgressBar = document.createElement('div');
+                totalProgressBar.style.height = '100%';
+                const totalProgressPercentage = (totalAmount / Object.values(categoryBudgets).reduce((sum, budget) => sum + budget, 0)) * 100;
+                totalProgressBar.style.width = `${Math.min(totalProgressPercentage, 100)}%`;
+                totalProgressBar.style.backgroundColor = '#76c7c0'; // 全体進捗は緑系
+                totalProgressContainer.appendChild(totalProgressBar);
+                productList.appendChild(totalProgressContainer);
+
+                const totalDiv = document.createElement('div');
+                totalDiv.innerHTML = `
+                    <h4>合計: ${totalAmount}円</h4>
+                    <h5>予算額: ${Object.values(categoryBudgets).reduce((sum, budget) => sum + budget, 0)}円</h5>
+                    <h5>進捗: ${Math.min(totalProgressPercentage, 100).toFixed(2)}%</h5>
+                `;
+                productList.appendChild(totalDiv);
+
+                // 編集ボタンにイベントリスナーを追加
+                document.querySelectorAll('.edit-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const id = e.target.getAttribute('data-id');
+                        const product = products[id];
+
+                        // モーダルにデータをセット
+                        document.getElementById('edit-name').value = product.name;
+                        document.getElementById('edit-price').value = product.price;
+                        document.getElementById('edit-quantity').value = product.quantity;
+
+                        // モーダルを表示
+                        document.querySelector('.modal-overlay').style.display = 'block';
+                        document.getElementById('edit-modal').style.display = 'block';
+
+                        // 保存ボタン
+                        document.querySelector('.save-btn').onclick = () => {
+                            const newName = document.getElementById('edit-name').value;
+                            const newPrice = document.getElementById('edit-price').value;
+                            const newQuantity = document.getElementById('edit-quantity').value;
+
+                            update(ref(db, `products/${id}`), { name: newName, price: newPrice, quantity: newQuantity });
+
+                            closeModal();
+                        };
+
+                        // 削除ボタン
+                        document.querySelector('.delete-btn').onclick = () => {
+                            remove(ref(db, `products/${id}`));
+                            closeModal();
+                        };
+                    });
+                });
+            }
         });
 
         // モーダルを閉じる
@@ -315,9 +442,8 @@
                 const messageDiv = document.createElement('div');
                 messageDiv.className = 'message';
                 messageDiv.innerHTML = `
-                <span class="username">${msg.username}</span>: 
+                <span class="username">${msg.username}: <span class="timestamp"> (${new Date(msg.timestamp).toLocaleTimeString()})</span></span>
                 <span class="text">${msg.text}</span>
-                <span class="timestamp"> (${new Date(msg.timestamp).toLocaleTimeString()})</span>
                 `;
                 chatMessages.appendChild(messageDiv);
             });
